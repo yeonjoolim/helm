@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "RLapp.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "RLapp.name" . }}
+    helm.sh/chart: {{ include "RLapp.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "RLapp.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "RLapp.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+          - name: http
+            containerPort: 80
+            protocol: TCP
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+        volumeMounts:
+        - name: shared-files
+          mountPath: /var/www/html
+{{- if .Values.configMapName }}
+        - name: config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+{{- end }}
+
+      - image: gitlab.pel/pel/docker-repo:rlapp
+        name: app
+        volumeMounts:
+          - name: shared-files
+            mountPath: /var/www/html
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "cp -r /app/. /var/www/html"]
+        ports:
+          - containerPort: 9000
+            hostPort: 9000
+      volumes:
+{{- if .Values.configMapName }}
+      - name: config
+        configMap:
+          name: {{ .Values.configMapName }}
+{{- end }}
+      - name: shared-files
+        emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
